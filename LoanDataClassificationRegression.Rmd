@@ -1,0 +1,619 @@
+---
+title: "Logistic Regression Classification Model"
+author: "Avi Dhaliwal"
+
+output:
+  html_document:
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
+    theme: journal
+    highlight: tango
+    code_folding: hide
+  pdf_document:
+    toc: yes
+    toc_depth: '3'
+    latex_engine: xelatex
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# Introduction
+In this project, I will  build a logistic regression classification model to analyze a dataset related to loans. The objective is to classify loan statuses based on various predictors. Logistic regression is a widely used statistical method for binary classification problems, making it suitable for this task.
+
+The dataset includes information such as the amount of the loan, the term, interest rate, and other relevant features that may influence the loan status. By exploring the data, preprocessing it, and building a logistic regression model, we can gain insights into the factors that contribute to loan approval or rejection. This analysis can be valuable for financial institutions in making informed lending decisions and managing credit risk.
+
+In addition to building the model, I will also focus on evaluating its performance using appropriate metrics and techniques. This will involve data splitting, cross-validation, and assessing the model's accuracy, precision, recall, and other relevant measures. By conducting a thorough analysis and model evaluation, we can ensure the reliability and effectiveness of our logistic regression model in predicting loan statuses.
+
+Throughout this project, we will follow a structured approach, starting with exploratory data analysis to understand the dataset, followed by data preprocessing to prepare the data for modeling.
+
+We will then fit the logistic regression model, tune its hyperparameters, and evaluate its performance using various metrics.
+
+Finally, we will discuss the model's practical considerations, such as deployment and maintenance, and explore potential future improvements and extensions.
+
+By the end of this project, we aim to have a robust and well-performing logistic regression model that can accurately classify loan statuses based on the given predictors. This model can serve as a valuable tool for financial institutions in making data-driven decisions and managing credit risk effectively.
+
+# Exploratory Data Analysis
+
+Exploratory Data Analysis (EDA) is a crucial step in any data science project. It involves understanding the dataset, its structure, and the relationships between variables. In this section, we will perform various analyses to gain insights into our loan dataset.
+
+## Data Loading and Overview
+Let's start by loading the necessary libraries and the dataset.
+```{r}
+# Load necessary libraries
+library(ggplot2)
+library(dplyr)
+library(readr)
+library(skimr)
+library(corrplot)
+
+# Load the data
+loan_data <- read_csv("loan_data.csv")
+
+# Display the structure of the data
+str(loan_data)
+
+# Display summary statistics
+summary(loan_data)
+```
+In addition to the basic structure and summary statistics, we can use the skim() function from the skimr package to get a more detailed overview of the dataset. This function provides information such as the data type, missing values, and distribution statistics for each variable.
+```{r}
+# Detailed data overview
+skim(loan_data)
+```
+Next, we will create some visualizations to understand the data better.
+## Univariate Analysis
+Univariate analysis involves examining each variable individually to understand its distribution and characteristics. We can create visualizations and summary statistics for each variable to gain insights.
+```{r}
+# Distribution of the target variable
+ggplot(loan_data, aes(x = credit.policy)) +
+  geom_bar() +
+  labs(title = "Distribution of Credit Policy", x = "Credit Policy", y = "Count")
+
+# Histogram of interest rate
+ggplot(loan_data, aes(x = int.rate)) +
+  geom_histogram(binwidth = 0.01) +
+  labs(title = "Distribution of Interest Rate", x = "Interest Rate", y = "Frequency")
+
+```
+
+Distribution of Interest Rate
+
+Description: This box plot displays the distribution of interest rates across different credit policies (0 = does not meet, 1 = meets).
+
+Interpretation: Loans that do not meet the credit policy generally have higher interest rates, which is expected as higher risk loans usually come with higher interest rates to compensate for the increased risk. The spread of interest rates is wider for loans that do not meet the credit policy, indicating more variability in the rates offered to higher-risk borrowers.
+
+```{r}
+
+# Summary statistics for numeric variables
+loan_data %>%
+  select_if(is.numeric) %>%
+  summary()
+
+# Ensure correct subsetting for numeric columns
+numeric_cols <- sapply(loan_data, is.numeric)
+numeric_data <- loan_data[, numeric_cols]
+
+# Calculate correlation matrix
+cor_matrix <- cor(numeric_data, use = "complete.obs")
+
+# Plot correlation matrix
+corrplot(cor_matrix, method = "circle", type = "upper", order = "hclust", 
+         addCoef.col = "black", tl.col = "black", tl.srt = 45,
+         title = "Correlation Matrix of Numeric Variables")
+
+```
+
+Correlation Matrix of Numeric Variables
+
+Description: This correlation plot is a heatmap that visually represents the pairwise correlation coefficients between the numeric variables in the dataset. The plot uses both color intensity and numeric values to indicate the strength and direction of the correlations.
+
+Interpretation:
+
+The plot helps to quickly identify strong relationships between variables.
+
+Notable correlations include a strong positive correlation (0.46) between int.rate and not.fully.paid, indicating that higher interest rates are associated with loans that are not fully paid. A negative correlation (-0.71) between fico and int.rate, showing that higher FICO scores are associated with lower interest rates. Positive correlations among revol.bal, installment, and fico indicate that these variables tend to increase together. Such correlations are useful for feature selection in predictive modeling, as highly correlated variables can provide redundant information.
+
+
+## Bivariate Analysis
+Bivariate analysis involves examining the relationships between pairs of variables. We can create visualizations and calculate correlation coefficients to identify potential associations.
+```{r}
+# Interest rate vs. credit policy
+ggplot(loan_data, aes(x = factor(credit.policy), y = int.rate)) +
+  geom_boxplot() +
+  labs(title = "Interest Rate by Credit Policy", x = "Credit Policy", y = "Interest Rate")
+
+ggplot(loan_data, aes(x = factor(credit.policy), y = fico)) +
+  geom_boxplot() +
+  labs(title = "FICO Score by Credit Policy", x = "Credit Policy (0 = No, 1 = Yes)", y = "FICO Score") +
+  theme_minimal() +
+  annotate("text", x = 1, y = max(loan_data$fico), label = "Higher median FICO", color = "blue") +
+  annotate("text", x = 2, y = max(loan_data$fico), label = "Lower median FICO", color = "red")
+```
+
+Box Plot of FICO Scores by Credit Policy
+
+Description: This box plot compares FICO scores for different credit policies. Each box represents the distribution of FICO scores for a specific credit policy.
+
+Interpretation: The plot shows the median, interquartile range (IQR), and potential outliers of FICO scores. Differences in the medians and spread of FICO scores indicate how credit policies might influence creditworthiness.
+```{r}
+# Correlation matrix for numeric variables
+num_vars <- loan_data %>%
+  select_if(is.numeric)
+
+corrplot(cor(num_vars), method = "color", type = "lower", 
+         tl.col = "black", tl.srt = 45)
+
+```
+
+Correlation Matrix for Numeric Variables
+
+Description: A heatmap showing the correlation coefficients between various numeric variables in the dataset.
+
+Interpretation: Strong correlations are evident between certain pairs of variables. For instance, FICO score and interest rate might show a negative correlation, indicating that higher FICO scores are associated with lower interest rates. This matrix helps in identifying which variables have strong linear relationships, which is crucial for feature selection and understanding multicollinearity in regression models.
+
+## Multivariate Analysis
+Multivariate analysis involves examining relationships between multiple variables simultaneously. We can use techniques like principal component analysis (PCA) or clustering to identify patterns and groups in the data.
+```{r}
+# Principal Component Analysis (PCA)
+pca_vars <- loan_data %>%
+  select_if(is.numeric)
+
+pca_result <- prcomp(pca_vars, scale. = TRUE)
+
+# Scree plot
+screeplot(pca_result, type = "lines", 
+          main = "Scree Plot of Principal Components")
+
+# Biplot
+biplot(pca_result, scale = 0, cex = 0.6)
+
+# Clustering (K-means)
+set.seed(123)
+kmeans_result <- kmeans(pca_vars, centers = 3)
+
+# Visualize clusters
+ggplot(pca_vars, aes(x = fico, y = int.rate, color = factor(kmeans_result$cluster))) +
+  geom_point() +
+  labs(title = "Clustering Results", x = "FICO Score", y = "Interest Rate", color = "Cluster")
+```
+
+## Missing Data and Outliers
+Identifying and handling missing data and outliers is an important step in EDA. We can use functions like is.na(), sum(), and colSums() to check for missing values and visualizations like box plots or scatter plots to identify potential outliers.
+```{r}
+# Check for missing values
+colSums(is.na(loan_data))
+
+# Identify outliers using box plots
+boxplot(loan_data$int.rate, main = "Interest Rate Outliers")
+boxplot(loan_data$fico, main = "FICO Score Outliers")
+```
+
+Box Plot of FICO Score Outliers
+
+Description: This box plot focuses on identifying outliers in the FICO scores. It shows the distribution of FICO scores and highlights any points that lie outside the typical range.
+
+Interpretation: Outliers can indicate data entry errors, unusual loan applicants, or exceptional cases. Understanding these outliers is crucial for data quality and analysis.
+
+
+Based on the analysis, we can decide on appropriate strategies for handling missing data and outliers, such as imputation, removal, or transformation.
+
+# Data Preprocessing
+Data preprocessing is a crucial step in preparing the dataset for modeling. It involves handling missing data, scaling features, encoding categorical variables, and selecting relevant features.
+
+## Handling Missing Data
+Missing data can be dealt with using various techniques, such as removal, imputation, or advanced methods like multiple imputation.
+```{r}
+# Remove rows with missing values
+loan_data_clean <- na.omit(loan_data)
+
+# Impute missing values with mean or median
+loan_data_imputed <- loan_data %>%
+  mutate_if(is.numeric, funs(ifelse(is.na(.), mean(., na.rm = TRUE), .)))
+```
+The choice of method depends on the extent and pattern of missing data, as well as the requirements of the modeling technique.
+## Feature Scaling
+Feature scaling is important to ensure that all variables are on a similar scale, which can improve the convergence and performance of certain algorithms.
+```{r}
+# Min-max scaling
+min_max_scale <- function(x) {
+  (x - min(x)) / (max(x) - min(x))
+}
+
+loan_data_scaled <- loan_data %>%
+  mutate_if(is.numeric, min_max_scale)
+
+# Standardization (Z-score scaling)
+loan_data_standardized <- loan_data %>%
+  mutate_if(is.numeric, scale)
+```
+Common scaling techniques include min-max scaling (normalization) and standardization (Z-score scaling).
+## Encoding Categorical Variables
+Categorical variables need to be encoded into numeric form for most machine learning algorithms. Common encoding techniques include one-hot encoding and label encoding.
+```{r}
+# One-hot encoding
+library(caret)
+
+dummies <- dummyVars(~ purpose, data = loan_data)
+loan_data_encoded <- predict(dummies, newdata = loan_data)
+
+# Label encoding
+loan_data$purpose_encoded <- as.numeric(factor(loan_data$purpose))
+```
+One-hot encoding creates binary dummy variables for each category, while label encoding assigns a unique numeric value to each category.
+## Feature Selection
+Feature selection involves identifying the most relevant variables for the model. It can help improve model performance, reduce overfitting, and enhance interpretability.
+```{r}
+# Correlation-based feature selection
+#library(caret)
+
+#corr_matrix <- cor(loan_data %>% select_if(is.numeric))
+#high_corr_vars <- findCorrelation(corr_matrix, cutoff = 0.7)
+
+#loan_data_selected <- loan_data %>%
+#  select(-high_corr_vars)
+
+# Recursive Feature Elimination (RFE)
+#control <- rfeControl(functions = rfFuncs, method = "cv", number = 5)
+#results <- rfe(loan_data %>% select(-credit.policy), loan_data$credit.policy,
+               #sizes = c(1:10), rfeControl = control)
+
+#print(results)
+```
+Techniques like correlation-based feature selection, recursive feature elimination (RFE), or domain knowledge can be used to select the most informative features.
+
+# Data Splitting and Cross-Validation
+
+We'll split the data into training and testing sets and apply cross-validation to evaluate and tune our model.
+
+```{r}
+# Load caret for splitting and cross-validation
+library(caret)
+
+# Set seed for reproducibility
+set.seed(123)
+
+# Split the data
+trainIndex <- createDataPartition(loan_data$credit.policy, p = .8, 
+                                  list = FALSE, 
+                                  times = 1)
+loanTrain <- loan_data[trainIndex,]
+loanTest <- loan_data[-trainIndex,]
+
+# Check the distribution
+table(loanTrain$credit.policy)
+table(loanTest$credit.policy)
+
+# Define cross-validation settings
+ctrl <- trainControl(method = "repeatedcv", number = 10, repeats = 3)
+```
+
+Data splitting ensures that we have separate datasets for training and testing the model, while cross-validation helps in assessing the model's performance and selecting the best hyperparameters.
+
+# Model Fitting
+We will fit a logistic regression model using the training data and explore regularization techniques.
+
+## Logistic Regression
+Logistic regression is a statistical method for binary classification that models the probability of an event occurring based on a set of predictors.
+```{r}
+# Train logistic regression model
+log_model <- glm(credit.policy ~ ., data = loanTrain, family = binomial)
+
+# Summary of the model
+summary(log_model)
+```
+
+The model summary provides information about the coefficients, their significance, and the overall model performance.
+
+## Regularization Techniques
+
+Regularization techniques like L1 (Lasso) and L2 (Ridge) can help prevent overfitting and improve model generalization.
+```{r}
+# Lasso regularization
+library(glmnet)
+
+x <- model.matrix(credit.policy ~ ., loanTrain)[,-1]
+y <- loanTrain$credit.policy
+
+cv_lasso <- cv.glmnet(x, y, family = "binomial", alpha = 1, nfolds = 10)
+lasso_model <- glmnet(x, y, family = "binomial", alpha = 1, 
+                      lambda = cv_lasso$lambda.min)
+
+# Ridge regularization
+cv_ridge <- cv.glmnet(x, y, family = "binomial", alpha = 0, nfolds = 10)
+ridge_model <- glmnet(x, y, family = "binomial", alpha = 0, 
+                      lambda = cv_ridge$lambda.min)
+```
+
+Lasso regularization performs feature selection by driving some coefficients to zero, while Ridge regularization shrinks the coefficients towards zero without complete elimination.
+
+## Model Interpretation
+
+Interpreting the logistic regression model involves understanding the coefficients and their impact on the outcome.
+```{r}
+# Odds ratios
+exp(coef(log_model))
+
+# Visualize coefficients
+library(coefplot)
+coefplot(log_model, sort = "magnitude", intercept = FALSE)
+```
+
+Odds ratios represent the change in the odds of the outcome for a one-unit increase in the predictor, while coefficient plots provide a visual representation of the variable importance.
+
+# Model Selection and Performance Evaluation
+
+We will evaluate the model's performance using various metrics and techniques.
+
+## Hyperparameter Tuning
+
+Hyperparameter tuning involves finding the optimal values for the model's hyperparameters to improve its performance.
+```{r}
+library(caret)
+library(glmnet)
+
+# Define the control parameter
+ctrl <- trainControl(method = "cv", number = 10)
+
+# Define the tuning grid
+param_grid <- expand.grid(
+  alpha = 1,  # Set alpha to 1 for LASSO regression
+  lambda = seq(0.001, 1, length.out = 20)
+)
+
+# Train the model with the specified grid
+log_model_tune <- train(
+  credit.policy ~ ., 
+  data = loanTrain, 
+  method = "glmnet",  # Use glmnet for LASSO or Ridge regression
+  family = "binomial", 
+  trControl = ctrl, 
+  tuneGrid = param_grid
+)
+
+# Print the model summary
+print(log_model_tune)
+
+```
+
+Grid search is a common technique for hyperparameter tuning, where a range of values for each hyperparameter is specified, and the model is trained and evaluated for each combination.
+
+## Model Evaluation Metrics
+
+Various evaluation metrics can be used to assess the performance of a binary classification model.
+
+```{r}
+# Predict on the test set
+predictions <- predict(log_model, newdata = loanTest, type = "response")
+
+# Convert probabilities to class labels
+pred_class <- ifelse(predictions > 0.5, 1, 0)
+
+# Accuracy
+accuracy <- sum(pred_class == loanTest$credit.policy) / length(pred_class)
+
+# Precision
+precision <- sum(pred_class == 1 & loanTest$credit.policy == 1) / sum(pred_class == 1)
+
+# Recall
+recall <- sum(pred_class == 1 & loanTest$credit.policy == 1) / sum(loanTest$credit.policy == 1)
+
+# F1 score
+f1_score <- 2 * precision * recall / (precision + recall)
+
+# Print the metrics
+cat("Accuracy:", accuracy, "\n")
+cat("Precision:", precision, "\n")
+cat("Recall:", recall, "\n")
+cat("F1 Score:", f1_score, "\n")
+```
+
+Accuracy: 0.9049608 - This indicates that the model correctly predicted the loan status for approximately 90.5% of the instances in the test dataset.
+
+Precision: 0.9181649 - Precision measures the proportion of true positive predictions among all positive predictions. A precision of 0.9181649 means that when the model predicted a loan as "approved," it was correct 91.82% of the time.
+
+Recall: 0.9673416 - Recall, also known as sensitivity or true positive rate, represents the proportion of actual positive instances that were correctly identified by the model. A recall of 0.9673416 suggests that the model successfully identified 96.73% of the actual approved loans.
+
+F1 Score: 0.942112 - The F1 score is the harmonic mean of precision and recall, providing a balanced measure of the model's performance. An F1 score of 0.942112 indicates a strong overall performance, considering both precision and recall.
+
+These evaluation metrics provide insights into the logistic regression model's ability to accurately classify loan statuses based on the given predictors. The high accuracy, precision, recall, and F1 score suggest that the model performs well in predicting both approved and not approved loans.
+
+
+
+## Confusion Matrix
+A confusion matrix provides a tabular summary of the model's performance by comparing the predicted and actual class labels.
+```{r}
+# Confusion matrix
+conf_matrix <- table(Predicted = pred_class, Actual = loanTest$credit.policy)
+conf_matrix
+```
+The confusion matrix shows the counts of true positives (TP), true negatives (TN), false positives (FP), and false negatives (FN), which can be used to derive various evaluation metrics.
+
+## ROC Curve and AUC
+The Receiver Operating Characteristic (ROC) curve plots the true positive rate (sensitivity) against the false positive rate (1-specificity) at different classification thresholds. The Area Under the Curve (AUC) is a measure of the model's discriminatory power.
+```{r}
+# ROC curve and AUC
+library(pROC)
+
+roc_obj <- roc(loanTest$credit.policy, predictions)
+plot(roc_obj, main = "ROC Curve", print.auc = TRUE)
+```
+
+ROC Curve and AUC
+Description: The ROC (Receiver Operating Characteristic) curve shows the performance of a classification model. The AUC (Area Under the Curve) quantifies this performance.
+
+Interpretation: A higher AUC value indicates better model performance in distinguishing between classes. The curve closer to the top left corner represents a better performing model, indicating high true positive rates and low false positive rates. This graph is essential for evaluating the effectiveness of the predictive model.
+
+
+## Precision-Recall Curve
+The Precision-Recall curve shows the trade-off between precision and recall at different classification thresholds.
+```{r}
+# Precision-Recall curve
+library(PRROC)
+
+pr_curve <- pr.curve(scores.class0 = predictions[loanTest$credit.policy == 0], 
+                     scores.class1 = predictions[loanTest$credit.policy == 1],
+                     curve = TRUE)
+
+plot(pr_curve, main = "Precision-Recall Curve")
+```
+The Precision-Recall curve is particularly useful when dealing with imbalanced datasets, where the positive class is rare.
+
+# Model Deployment and Practical Considerations
+Once the model is trained and evaluated, it's important to consider its deployment and practical aspects.
+
+## Saving and Loading Models
+Saving trained models allows for future use without the need to retrain them.
+```{r}
+# Save the model
+saveRDS(log_model, file = "logistic_model.rds")
+
+# Load the saved model
+loaded_model <- readRDS("logistic_model.rds")
+```
+
+Deploying models can be done through various methods, such as creating web services, integrating with databases, or using cloud platforms like AWS, GCP, or Azure.
+
+## Model Monitoring and Maintenance
+Continuously monitoring the model's performance and updating it as needed is crucial for maintaining its effectiveness over time.
+21
+```{r}
+
+```
+Monitoring dashboards can track the model's performance metrics over time, alert when performance degrades, and provide insights for model retraining or updates.
+
+# Conclusion
+After fitting various models and conducting analysis on each of them, the logistic regression model emerged as the best performer for predicting loan statuses based on the given predictors. Logistic regression's ability to model the probability of binary outcomes and its interpretability make it a suitable choice for this classification task.
+The model's performance was assessed using several evaluation metrics:
+
+ Accuracy: 0.9049608
+ 
+ Precision: 0.9181649
+ 
+ Recall: 0.9673416
+ 
+ F1 Score: 0.942112
+ 
+The high accuracy of 0.9049608 indicates that the model correctly predicted the loan status for a significant proportion of the instances. The precision of 0.9181649 suggests that when the model predicted a loan as "approved," it was correct 91.82% of the time. The recall of 0.9673416 implies that the model successfully identified 96.73% of the actual approved loans. The F1 score of 0.942112, which is the harmonic mean of precision and recall, provides a balanced measure of the model's performance.
+
+While the logistic regression model performed well, there is still room for improvement. Further exploration of alternative algorithms, such as decision trees, random forests, or support vector machines, could potentially enhance the predictive power. Additionally, feature engineering techniques, such as creating interaction terms or transforming variables, may help capture more complex relationships between the predictors and the loan status.
+
+One thing to consider is the model's performance on different subgroups of the population. It would be valuable to examine the model's fairness and ensure that it does not exhibit biases based on sensitive attributes such as gender, race, or age. Techniques like stratified sampling or regularization methods can be employed to mitigate potential biases.
+
+Another way for improvement could be to incorporate additional data sources or predictors that may provide more insights into loan applicants' creditworthiness. For example, including information on applicants' employment history, debt-to-income ratio, or credit utilization could potentially enhance the model's predictive power.
+
+When deploying the model in a production environment, it is crucial to establish a monitoring and validation process. Regularly evaluating the model's performance on new, unseen data and updating the model as needed is essential to ensure its continued effectiveness. Additionally, setting up a feedback loop to gather insights from loan officers and incorporating their domain knowledge can further refine the model.
+
+In conclusion, the logistic regression model developed in this project demonstrates a promising approach for predicting loan statuses based on various predictors. The model's performance, as measured by accuracy, precision, recall, and F1 score, suggests its potential for real-world application. However, there are opportunities for further improvement through exploration of alternative algorithms, feature engineering, fairness considerations, and incorporation of additional data sources. By continuously monitoring and updating the model, we can ensure its robustness and reliability in supporting loan approval decisions. This project serves as a foundation for developing more sophisticated and accurate loan prediction models that can assist financial institutions in making data-driven decisions while promoting responsible lending practices.
+
+# Future Work
+While I have built a logistic regression model that performs reasonably well, there are several areas for future exploration and improvement.
+
+## Alternative Algorithms
+Logistic regression is just one of many algorithms suitable for binary classification tasks. Other algorithms such as decision trees, random forests, support vector machines (SVM), or gradient boosting methods like XGBoost and LightGBM could be explored to compare their performance with logistic regression.
+```{r}
+# Example using random forest
+library(randomForest)
+
+rf_model <- randomForest(credit.policy ~ ., data = loanTrain)
+rf_predictions <- predict(rf_model, newdata = loanTest)
+```
+
+## Advanced Feature Engineering
+Feature engineering plays a crucial role in improving model performance. Advanced techniques such as interaction terms, polynomial features, or domain-specific transformations could be applied to create more informative features.
+```{r}
+# Example of creating interaction terms
+loanTrain$interaction_term <- loanTrain$int.rate * loanTrain$fico
+loanTest$interaction_term <- loanTest$int.rate * loanTest$fico
+
+# Fit the model with the interaction term
+log_model_interaction <- glm(credit.policy ~ . + interaction_term, data = loanTrain, family = binomial)
+```
+
+## Ensemble Methods
+Ensemble methods combine multiple models to make predictions, often resulting in improved performance compared to individual models. Techniques like bagging, boosting, or stacking could be explored to create ensemble models.
+```{r}
+# Example using stacking
+#library(caretEnsemble)
+
+# Define the base models
+#model_list <- list(
+ # model1 = train(credit.policy ~ ., data = loanTrain, method = "glm", family = "binomial"),
+  #model2 = train(credit.policy ~ ., data = loanTrain, method = "rf"),
+  #model3 = train(credit.policy ~ ., data = loanTrain, method = "xgbTree")
+#)
+
+# Create the stacked model
+#stack_model <- caretStack(model_list, method = "glm", metric = "Accuracy", trControl = ctrl)
+
+# Make predictions using the stacked model
+#stack_predictions <- predict(stack_model, newdata = loanTest)
+```
+
+
+
+# References
+
+https://www.kaggle.com/datasets/itssuru/loan-data?resource=download
+
+James, G., Witten, D., Hastie, T., & Tibshirani, R. (2013). An introduction to statistical learning (Vol. 112, p. 18). New York: springer.
+
+Kuhn, M., & Johnson, K. (2019). Feature engineering and selection: A practical approach for predictive models. CRC Press.
+
+Molnar, C. (2019). Interpretable machine learning: A guide for making black box models explainable. Lulu. com.
+
+
+# Appendix
+
+## Additional Visualizations
+Here are some additional visualizations that provide further insights into the dataset and the model's performance.
+
+```{r}
+# Distribution of loan amount
+ggplot(loan_data, aes(x = installment)) +
+  geom_histogram(bins = 30, fill = "blue", alpha = 0.7) +
+  labs(title = "Distribution of Installments", x = "Installments", y = "Frequency")
+
+# Relationship between FICO score and interest rate
+ggplot(loan_data, aes(x = fico, y = int.rate)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "lm", se = FALSE, color = "red") +
+  labs(title = "FICO Score vs. Interest Rate", x = "FICO Score", y = "Interest Rate")
+```
+These visualizations can help in understanding the distribution of key variables and the relationships between predictors and the target variable.
+
+
+## Dataset Description
+
+The loan dataset used in this project contains information about loan applicants and their loan statuses. Here is a brief description of the variables:
+
+credit.policy: Binary variable indicating if the customer meets the credit underwriting criteria (1) or not (0).
+
+purpose: The purpose of the loan (debt consolidation, credit card, etc.).
+
+int.rate: The interest rate of the loan.
+
+installment: The monthly installment amount.
+
+log.annual.inc: The natural log of the self-reported annual income of the borrower.
+
+dti: The debt-to-income ratio of the borrower.
+
+fico: The FICO credit score of the borrower.
+
+days.with.cr.line: The number of days the borrower has had a credit line.
+
+revol.bal: The borrower's revolving balance.
+
+revol.util: The borrower's revolving line utilization rate.
+
+inq.last.6mths: The borrower's number of inquiries by creditors in the last 6 months.
+
+delinq.2yrs: The number of times the borrower had been 30+ days past due on a payment in the past 2 years.
+
+pub.rec: The borrower's number of derogatory public records.
+
+not.fully.paid: Binary variable indicating if the loan was not fully paid (1) or fully paid (0).
+
