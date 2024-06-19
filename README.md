@@ -13,3 +13,5 @@ We will then fit the logistic regression model, tune its hyperparameters, and ev
 Finally, we will discuss the model's practical considerations, such as deployment and maintenance, and explore potential future improvements and extensions.
 
 By the end of this project, we aim to have a robust and well-performing logistic regression model that can accurately classify loan statuses based on the given predictors. This model can serve as a valuable tool for financial institutions in making data-driven decisions and managing credit risk effectively.
+
+For any questions or suggestions please email avijit.dhaliwal@gmail.com.
